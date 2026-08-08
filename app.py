@@ -8,20 +8,24 @@ from huggingface_hub import hf_hub_download, list_repo_files
 
 
 # ============================================================
-# MAMMOSENSE CONFIGURATION
+# PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
-    page_title="MammoSense",
+    page_title="MammoSense | Breast Ultrasound AI",
     page_icon="🩺",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
+
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
 
 REPO_ID = "Makky07/MammoSense-breast-ultrasound"
 
 IMAGE_SIZE = 224
-NUM_CLASSES = 3
 
 CLASS_NAMES = [
     "Normal",
@@ -31,65 +35,430 @@ CLASS_NAMES = [
 
 
 # ============================================================
-# CUSTOM CSS
+# PREMIUM UI
 # ============================================================
 
 st.markdown("""
 <style>
 
-.main {
-    background-color: #f7f9fc;
+/* ==========================================================
+   GLOBAL
+========================================================== */
+
+.stApp {
+    background: #F7F9FC;
 }
 
 .block-container {
+    max-width: 1250px;
     padding-top: 2rem;
-    padding-bottom: 3rem;
+    padding-bottom: 4rem;
 }
 
+
+/* ==========================================================
+   REMOVE STREAMLIT CLUTTER
+========================================================== */
+
+#MainMenu {
+    visibility: hidden;
+}
+
+footer {
+    visibility: hidden;
+}
+
+header {
+    visibility: hidden;
+}
+
+
+/* ==========================================================
+   HERO
+========================================================== */
+
 .hero {
-    padding: 1.8rem 2rem;
-    border-radius: 20px;
-    background: linear-gradient(
-        135deg,
-        #172554 0%,
-        #1e3a8a 55%,
-        #2563eb 100%
-    );
+    background:
+        radial-gradient(
+            circle at 90% 20%,
+            rgba(96,165,250,0.30),
+            transparent 30%
+        ),
+        linear-gradient(
+            135deg,
+            #0F172A,
+            #172554 55%,
+            #1D4ED8
+        );
+
+    border-radius: 28px;
+
+    padding: 42px 45px;
+
+    margin-bottom: 30px;
+
     color: white;
-    margin-bottom: 28px;
+
+    box-shadow:
+        0 20px 60px rgba(15,23,42,0.15);
+}
+
+.hero-top {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.logo {
+    width: 58px;
+    height: 58px;
+
+    border-radius: 16px;
+
+    background: rgba(255,255,255,0.12);
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    font-size: 30px;
+
+    border: 1px solid rgba(255,255,255,0.18);
 }
 
 .hero h1 {
     font-size: 44px;
+    font-weight: 750;
+
+    letter-spacing: -1.5px;
+
+    margin: 0;
+}
+
+.hero-subtitle {
+    font-size: 17px;
+
+    margin-top: 16px;
+
+    color: #DBEAFE;
+
+    max-width: 700px;
+
+    line-height: 1.7;
+}
+
+.hero-badge {
+    display: inline-block;
+
+    margin-top: 22px;
+
+    padding: 7px 13px;
+
+    border-radius: 100px;
+
+    background: rgba(255,255,255,0.10);
+
+    border: 1px solid rgba(255,255,255,0.16);
+
+    font-size: 13px;
+
+    color: #E0F2FE;
+}
+
+
+/* ==========================================================
+   SECTION HEADINGS
+========================================================== */
+
+.section-title {
+    font-size: 26px;
+
+    font-weight: 720;
+
+    color: #0F172A;
+
+    letter-spacing: -0.5px;
+
+    margin-top: 20px;
+
+    margin-bottom: 6px;
+}
+
+.section-description {
+    color: #64748B;
+
+    font-size: 15px;
+
+    margin-bottom: 22px;
+}
+
+
+/* ==========================================================
+   CARDS
+========================================================== */
+
+.card {
+    background: white;
+
+    border: 1px solid #E5EAF1;
+
+    border-radius: 20px;
+
+    padding: 25px;
+
+    box-shadow:
+        0 8px 30px rgba(15,23,42,0.04);
+}
+
+.card-title {
+    font-size: 16px;
+
+    font-weight: 700;
+
+    color: #0F172A;
+
     margin-bottom: 8px;
 }
 
-.hero p {
-    font-size: 18px;
-    opacity: 0.92;
+
+/* ==========================================================
+   UPLOAD AREA
+========================================================== */
+
+.upload-card {
+    background: white;
+
+    border: 1.5px dashed #CBD5E1;
+
+    border-radius: 22px;
+
+    padding: 35px 25px;
+
+    text-align: center;
+
+    transition: 0.2s ease;
 }
+
+.upload-icon {
+    font-size: 42px;
+
+    margin-bottom: 10px;
+}
+
+.upload-title {
+    font-size: 20px;
+
+    font-weight: 700;
+
+    color: #0F172A;
+}
+
+.upload-description {
+    color: #64748B;
+
+    font-size: 14px;
+
+    margin-top: 6px;
+}
+
+
+/* ==========================================================
+   IMAGE
+========================================================== */
+
+.image-card {
+    background: white;
+
+    border-radius: 22px;
+
+    padding: 15px;
+
+    border: 1px solid #E5EAF1;
+
+    box-shadow:
+        0 8px 30px rgba(15,23,42,0.05);
+}
+
+
+/* ==========================================================
+   RESULT
+========================================================== */
 
 .result-card {
-    padding: 24px;
-    border-radius: 16px;
     background: white;
-    border: 1px solid #e5e7eb;
-    margin-bottom: 18px;
+
+    border-radius: 22px;
+
+    padding: 28px;
+
+    border: 1px solid #E5EAF1;
+
+    box-shadow:
+        0 8px 30px rgba(15,23,42,0.05);
 }
 
-.info-card {
-    padding: 20px;
-    border-radius: 15px;
-    background: white;
-    border: 1px solid #e5e7eb;
+.result-label {
+    color: #64748B;
+
+    font-size: 13px;
+
+    text-transform: uppercase;
+
+    letter-spacing: 1px;
+
+    font-weight: 700;
 }
+
+.result-value {
+    font-size: 38px;
+
+    font-weight: 780;
+
+    color: #0F172A;
+
+    margin-top: 5px;
+
+    letter-spacing: -1px;
+}
+
+.result-confidence {
+    color: #2563EB;
+
+    font-weight: 700;
+
+    font-size: 16px;
+}
+
+
+/* ==========================================================
+   STATUS
+========================================================== */
+
+.status {
+    display: inline-flex;
+
+    align-items: center;
+
+    gap: 8px;
+
+    padding: 7px 12px;
+
+    border-radius: 100px;
+
+    background: #ECFDF5;
+
+    color: #047857;
+
+    font-size: 13px;
+
+    font-weight: 700;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+
+    border-radius: 50%;
+
+    background: #10B981;
+}
+
+
+/* ==========================================================
+   DISCLAIMER
+========================================================== */
 
 .disclaimer {
-    padding: 20px;
-    border-radius: 14px;
-    background-color: #fff7ed;
-    border: 1px solid #fed7aa;
-    color: #7c2d12;
+    background: #FFF7ED;
+
+    border: 1px solid #FED7AA;
+
+    border-radius: 18px;
+
+    padding: 22px;
+
+    color: #7C2D12;
+
+    line-height: 1.65;
+
+    font-size: 14px;
+}
+
+
+/* ==========================================================
+   MODEL INFO
+========================================================== */
+
+.model-info {
+    background: #F8FAFC;
+
+    border-radius: 16px;
+
+    padding: 18px;
+
+    border: 1px solid #E2E8F0;
+}
+
+.model-name {
+    font-weight: 750;
+
+    color: #0F172A;
+
+    font-size: 16px;
+}
+
+.model-detail {
+    color: #64748B;
+
+    font-size: 13px;
+
+    margin-top: 5px;
+}
+
+
+/* ==========================================================
+   FOOTER
+========================================================== */
+
+.footer {
+    text-align: center;
+
+    color: #94A3B8;
+
+    font-size: 12px;
+
+    margin-top: 40px;
+}
+
+
+/* ==========================================================
+   MOBILE
+========================================================== */
+
+@media (max-width: 768px) {
+
+    .block-container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .hero {
+        padding: 28px 25px;
+        border-radius: 22px;
+    }
+
+    .hero h1 {
+        font-size: 34px;
+    }
+
+    .hero-subtitle {
+        font-size: 15px;
+    }
+
+    .result-value {
+        font-size: 32px;
+    }
+
 }
 
 </style>
@@ -97,7 +466,8 @@ st.markdown("""
 
 
 # ============================================================
-# EXACT BUSIVIT MODEL USED DURING TRAINING
+# MODEL ARCHITECTURE
+# EXACTLY MATCHES TRAINING
 # ============================================================
 
 class BUSIViT(nn.Module):
@@ -106,14 +476,12 @@ class BUSIViT(nn.Module):
 
         super().__init__()
 
-        # EXACT BACKBONE FROM TRAINING
         self.backbone = timm.create_model(
             "vit_small_patch16_224",
             pretrained=False,
             num_classes=0
         )
 
-        # EXACT CLASSIFICATION HEAD FROM TRAINING
         self.head = nn.Sequential(
 
             nn.Linear(
@@ -148,23 +516,20 @@ class BUSIViT(nn.Module):
 
 
 # ============================================================
-# FIND AND DOWNLOAD MODEL FROM HUGGING FACE
+# DOWNLOAD MODEL
 # ============================================================
 
 @st.cache_resource
 def download_model():
 
-    # Get the files currently inside the repository
     files = list_repo_files(
         repo_id=REPO_ID,
         repo_type="model"
     )
 
-    # Find all .pt files
     model_files = [
-        file
-        for file in files
-        if file.lower().endswith(".pt")
+        f for f in files
+        if f.lower().endswith(".pt")
     ]
 
     if not model_files:
@@ -174,7 +539,6 @@ def download_model():
             "MammoSense Hugging Face repository."
         )
 
-    # Use the first .pt model found
     model_filename = model_files[0]
 
     model_path = hf_hub_download(
@@ -195,33 +559,32 @@ def load_model():
 
     model_path, model_filename = download_model()
 
-    # Load checkpoint
     checkpoint = torch.load(
         model_path,
         map_location="cpu",
         weights_only=False
     )
 
-    # Create EXACT architecture used during training
     model = BUSIViT(
         num_classes=checkpoint["num_classes"]
     )
 
-    # Load trained weights
     model.load_state_dict(
         checkpoint["model_state_dict"],
         strict=True
     )
 
-    # Evaluation mode
     model.eval()
 
-    return model, checkpoint, model_filename
+    return (
+        model,
+        checkpoint,
+        model_filename
+    )
 
 
 # ============================================================
 # PREPROCESSING
-# EXACTLY MATCHES TRAINING eval_transform
 # ============================================================
 
 transform = T.Compose([
@@ -238,6 +601,7 @@ transform = T.Compose([
             0.456,
             0.406
         ],
+
         std=[
             0.229,
             0.224,
@@ -255,158 +619,133 @@ def predict(image, model):
 
     image = image.convert("RGB")
 
-    image_tensor = transform(image)
+    tensor = transform(image)
 
-    image_tensor = image_tensor.unsqueeze(0)
+    tensor = tensor.unsqueeze(0)
 
     with torch.no_grad():
 
-        logits = model(
-            image_tensor
-        )
+        logits = model(tensor)
 
         probabilities = torch.softmax(
             logits,
             dim=1
         )[0]
 
-    predicted_index = torch.argmax(
+    index = torch.argmax(
         probabilities
     ).item()
 
-    predicted_class = CLASS_NAMES[
-        predicted_index
-    ]
-
     return (
-        predicted_class,
+        CLASS_NAMES[index],
         probabilities.cpu().numpy()
     )
 
 
 # ============================================================
-# HEADER
+# HERO
 # ============================================================
 
 st.markdown("""
 <div class="hero">
 
-<h1>🩺 MammoSense</h1>
+<div class="hero-top">
 
-<p>
-AI-assisted breast ultrasound image classification
-</p>
+<div class="logo">
+🩺
+</div>
+
+<div>
+
+<h1>MammoSense</h1>
+
+</div>
+
+</div>
+
+<div class="hero-subtitle">
+
+Intelligent breast ultrasound analysis powered by
+a Vision Transformer trained for three-class
+classification.
+
+</div>
+
+<div class="hero-badge">
+
+RESEARCH AI • BUSI • VISION TRANSFORMER
+
+</div>
 
 </div>
 """, unsafe_allow_html=True)
 
 
 # ============================================================
-# SIDEBAR
-# ============================================================
-
-with st.sidebar:
-
-    st.markdown("## MammoSense")
-
-    st.markdown(
-        "### Breast Ultrasound AI"
-    )
-
-    st.divider()
-
-    st.markdown(
-        "### Model Information"
-    )
-
-    st.write(
-        "**Architecture:** ViT-Small Patch16-224"
-    )
-
-    st.write(
-        "**Input:** 224 × 224 pixels"
-    )
-
-    st.write(
-        "**Classes:** 3"
-    )
-
-    st.write(
-        "**Dataset:** BUSI"
-    )
-
-    st.write(
-        "**Framework:** PyTorch + timm"
-    )
-
-    st.divider()
-
-    st.markdown("### Classification")
-
-    st.write("🟢 Normal")
-    st.write("🟡 Benign")
-    st.write("🔴 Malignant")
-
-    st.divider()
-
-    st.caption(
-        "MammoSense is an experimental "
-        "AI research prototype."
-    )
-
-
-# ============================================================
-# MAIN INTRODUCTION
-# ============================================================
-
-st.markdown(
-    "## Breast Ultrasound Analysis"
-)
-
-st.write(
-    "Upload a breast ultrasound image to obtain "
-    "an AI-generated classification and probability "
-    "distribution."
-)
-
-
-# ============================================================
-# LOAD MODEL
+# MODEL STATUS
 # ============================================================
 
 try:
 
     with st.spinner(
-        "Connecting to MammoSense AI model..."
+        "Initializing MammoSense AI..."
     ):
 
         model, checkpoint, model_filename = load_model()
 
-    st.success(
-        f"MammoSense model loaded successfully: "
-        f"{model_filename}"
+    st.markdown(
+        """
+        <div class="status">
+        <span class="status-dot"></span>
+        AI model online
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
 except Exception as e:
 
     st.error(
-        "Unable to load the MammoSense model."
+        "MammoSense could not initialize."
     )
 
-    st.code(
-        str(e),
-        language="text"
-    )
+    with st.expander(
+        "Technical details"
+    ):
+
+        st.code(
+            str(e)
+        )
 
     st.stop()
 
 
 # ============================================================
-# IMAGE UPLOAD
+# INTRO
+# ============================================================
+
+st.markdown(
+    '<div class="section-title">'
+    'Breast Ultrasound Analysis'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="section-description">'
+    'Upload an ultrasound image to generate an '
+    'AI classification and probability profile.'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# UPLOAD
 # ============================================================
 
 uploaded_file = st.file_uploader(
-    "Upload breast ultrasound image",
+    "Upload ultrasound image",
     type=[
         "jpg",
         "jpeg",
@@ -414,34 +753,78 @@ uploaded_file = st.file_uploader(
         "bmp",
         "tif",
         "tiff"
-    ]
+    ],
+    label_visibility="collapsed"
 )
+
+
+if uploaded_file is None:
+
+    st.markdown("""
+    <div class="upload-card">
+
+    <div class="upload-icon">
+    🖼️
+    </div>
+
+    <div class="upload-title">
+    Drop your ultrasound image here
+    </div>
+
+    <div class="upload-description">
+    JPG, JPEG, PNG, BMP, TIFF • Recommended input quality
+    </div>
+
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # ============================================================
 # ANALYSIS
 # ============================================================
 
-if uploaded_file is not None:
+if uploaded_file:
 
     image = Image.open(
         uploaded_file
     ).convert("RGB")
 
-    st.divider()
-
-    image_column, result_column = st.columns(
-        [1, 1]
+    prediction, probabilities = predict(
+        image,
+        model
     )
+
+    confidence = (
+        float(probabilities.max()) * 100
+    )
+
+
+    # ========================================================
+    # IMAGE + RESULT
+    # ========================================================
+
+    st.markdown(
+        "<br>",
+        unsafe_allow_html=True
+    )
+
+    image_col, result_col = st.columns(
+        [1.05, 0.95],
+        gap="large"
+    )
+
 
     # --------------------------------------------------------
     # IMAGE
     # --------------------------------------------------------
 
-    with image_column:
+    with image_col:
 
         st.markdown(
-            "### Uploaded Ultrasound"
+            '<div class="card-title">'
+            'Ultrasound image'
+            '</div>',
+            unsafe_allow_html=True
         )
 
         st.image(
@@ -449,29 +832,12 @@ if uploaded_file is not None:
             use_container_width=True
         )
 
+
     # --------------------------------------------------------
-    # PREDICTION
+    # RESULT
     # --------------------------------------------------------
 
-    with result_column:
-
-        st.markdown(
-            "### AI Classification"
-        )
-
-        with st.spinner(
-            "Analyzing image..."
-        ):
-
-            prediction, probabilities = predict(
-                image,
-                model
-            )
-
-        confidence = (
-            float(probabilities.max())
-            * 100
-        )
+    with result_col:
 
         st.markdown(
             '<div class="result-card">',
@@ -479,45 +845,45 @@ if uploaded_file is not None:
         )
 
         st.markdown(
-            f"## {prediction}"
-        )
-
-        st.metric(
-            "Highest model probability",
-            f"{confidence:.2f}%"
-        )
-
-        st.markdown(
-            "</div>",
+            '<div class="result-label">'
+            'AI classification'
+            '</div>',
             unsafe_allow_html=True
         )
 
-
-    # ========================================================
-    # PROBABILITIES
-    # ========================================================
-
-    st.divider()
-
-    st.markdown(
-        "## Prediction Probabilities"
-    )
-
-    probability_columns = st.columns(3)
-
-    for i, class_name in enumerate(
-        CLASS_NAMES
-    ):
-
-        probability = (
-            float(probabilities[i])
-            * 100
+        st.markdown(
+            f'<div class="result-value">'
+            f'{prediction}'
+            f'</div>',
+            unsafe_allow_html=True
         )
 
-        with probability_columns[i]:
+        st.markdown(
+            f'<div class="result-confidence">'
+            f'{confidence:.2f}% model probability'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            "<br>",
+            unsafe_allow_html=True
+        )
+
+        st.write(
+            "Probability distribution"
+        )
+
+        for i, class_name in enumerate(
+            CLASS_NAMES
+        ):
+
+            probability = (
+                float(probabilities[i]) * 100
+            )
 
             st.markdown(
-                f"### {class_name}"
+                f"**{class_name}**"
             )
 
             st.progress(
@@ -527,139 +893,209 @@ if uploaded_file is not None:
                 )
             )
 
-            st.write(
-                f"**{probability:.2f}%**"
+            st.caption(
+                f"{probability:.2f}%"
             )
 
+        st.markdown(
+            '</div>',
+            unsafe_allow_html=True
+        )
+
 
     # ========================================================
-    # SUMMARY
+    # INTERPRETATION
     # ========================================================
-
-    st.divider()
 
     st.markdown(
-        "## Analysis Summary"
+        "<br>",
+        unsafe_allow_html=True
     )
 
-    col1, col2 = st.columns(2)
+    st.markdown(
+        '<div class="section-title">'
+        'Prediction overview'
+        '</div>',
+        unsafe_allow_html=True
+    )
 
-    with col1:
+    overview1, overview2, overview3 = st.columns(3)
+
+
+    with overview1:
 
         st.markdown(
-            '<div class="info-card">',
+            '<div class="card">',
             unsafe_allow_html=True
         )
 
         st.markdown(
-            "**Predicted classification**"
+            '<div class="card-title">'
+            'Top prediction'
+            '</div>',
+            unsafe_allow_html=True
         )
 
         st.markdown(
             f"### {prediction}"
         )
 
-        st.write(
-            f"The model assigned its highest "
-            f"probability to **{prediction}**."
+        st.caption(
+            "Highest probability class"
         )
 
         st.markdown(
-            "</div>",
+            '</div>',
             unsafe_allow_html=True
         )
 
-    with col2:
+
+    with overview2:
 
         st.markdown(
-            '<div class="info-card">',
+            '<div class="card">',
             unsafe_allow_html=True
         )
 
         st.markdown(
-            "**Model probability**"
+            '<div class="card-title">'
+            'Model confidence'
+            '</div>',
+            unsafe_allow_html=True
         )
 
         st.markdown(
-            f"### {confidence:.2f}%"
+            f"### {confidence:.1f}%"
         )
 
-        st.write(
-            "This is the model's probability "
-            "for its highest-scoring class."
+        st.caption(
+            "Probability assigned to top class"
         )
 
         st.markdown(
-            "</div>",
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+
+    with overview3:
+
+        st.markdown(
+            '<div class="card">',
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            '<div class="card-title">'
+            'Image input'
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            "224 × 224"
+        )
+
+        st.caption(
+            "Model inference resolution"
+        )
+
+        st.markdown(
+            '</div>',
             unsafe_allow_html=True
         )
 
 
 # ============================================================
-# MODEL INFORMATION
+# MODEL DETAILS
 # ============================================================
 
-st.divider()
+st.markdown(
+    "<br>",
+    unsafe_allow_html=True
+)
 
 with st.expander(
-    "Model information"
+    "MammoSense model details"
 ):
 
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+
+        st.markdown(
+            "**Architecture**"
+        )
+
+        st.write(
+            "ViT-Small Patch16-224"
+        )
+
+    with c2:
+
+        st.markdown(
+            "**Training dataset**"
+        )
+
+        st.write(
+            "BUSI"
+        )
+
+    with c3:
+
+        st.markdown(
+            "**Classes**"
+        )
+
+        st.write(
+            "Normal • Benign • Malignant"
+        )
+
+    st.divider()
+
     st.write(
-        "**Model:** MammoSense BUSI ViT"
+        f"**Model file:** `{model_filename}`"
     )
 
     st.write(
-        "**Architecture:** "
-        "vit_small_patch16_224"
+        "**Framework:** PyTorch + timm"
     )
 
     st.write(
-        "**Input size:** 224 × 224"
-    )
-
-    st.write(
-        "**Classes:** Normal, Benign, Malignant"
-    )
-
-    st.write(
-        "**Training dataset:** BUSI "
-        "(Breast Ultrasound Images)"
-    )
-
-    st.write(
-        "**Image normalization:** "
-        "ImageNet mean/std"
-    )
-
-    st.write(
-        f"**Hugging Face repository:** "
-        f"{REPO_ID}"
+        "**Input preprocessing:** "
+        "Resize → Tensor → ImageNet normalization"
     )
 
 
 # ============================================================
-# MEDICAL DISCLAIMER
+# DISCLAIMER
 # ============================================================
 
-st.divider()
+st.markdown(
+    "<br>",
+    unsafe_allow_html=True
+)
 
 st.markdown("""
 <div class="disclaimer">
 
-<h3>⚠️ Important Medical Disclaimer</h3>
+<strong>⚠️ Research & Medical Disclaimer</strong>
 
-MammoSense is an experimental AI research prototype
-and is <b>not a medical device or diagnostic system</b>.
+<br><br>
 
-Its predictions should not be used to diagnose,
-exclude, or confirm breast cancer.
+MammoSense is an experimental research prototype
+for AI-assisted breast ultrasound image classification.
+It is <strong>not a medical device</strong> and must not
+be used as a substitute for professional medical
+evaluation or diagnosis.
 
-AI predictions can be incorrect, particularly when
-images differ from the training data.
+<br><br>
 
-Clinical assessment by a qualified healthcare
-professional is required for diagnosis.
+The model can produce incorrect predictions and may
+perform differently on images outside its training
+distribution. A qualified healthcare professional
+should interpret ultrasound findings and make any
+clinical decisions.
 
 </div>
 """, unsafe_allow_html=True)
@@ -669,14 +1105,14 @@ professional is required for diagnosis.
 # FOOTER
 # ============================================================
 
-st.divider()
+st.markdown("""
+<div class="footer">
 
-st.caption(
-    "MammoSense • AI-assisted breast ultrasound "
-    "classification research prototype"
-)
+MammoSense · Breast Ultrasound AI Research Prototype
 
-st.caption(
-    "ViT-Small Patch16-224 • BUSI • "
-    "Normal / Benign / Malignant"
-)
+<br>
+
+ViT-Small Patch16-224 · BUSI · PyTorch
+
+</div>
+""", unsafe_allow_html=True)

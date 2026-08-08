@@ -1,31 +1,187 @@
+# ============================================================
+# MAMMOSENSE
+# AI-ASSISTED BREAST ULTRASOUND ANALYSIS
+# ViT-Small Patch16-224
+# ============================================================
+
 import streamlit as st
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import timm
-import torchvision.transforms as T
-from PIL import Image
-from huggingface_hub import hf_hub_download, list_repo_files
 import numpy as np
 import cv2
 
+from PIL import Image
+from huggingface_hub import hf_hub_download
+import torchvision.transforms as T
+
 
 # ============================================================
-# PAGE CONFIG
+# PAGE CONFIGURATION
 # ============================================================
 
 st.set_page_config(
-    page_title="MammoSense | Breast Ultrasound AI",
+    page_title="MammoSense",
     page_icon="🩺",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 
 # ============================================================
-# CONFIG
+# CUSTOM CSS
+# ============================================================
+
+st.markdown("""
+<style>
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
+}
+
+.stApp {
+    background:
+        radial-gradient(
+            circle at 15% 10%,
+            rgba(99,102,241,0.10),
+            transparent 30%
+        ),
+        radial-gradient(
+            circle at 85% 15%,
+            rgba(236,72,153,0.08),
+            transparent 30%
+        ),
+        #080b14;
+    color: #f8fafc;
+}
+
+.block-container {
+    max-width: 1400px;
+    padding-top: 2rem;
+    padding-bottom: 3rem;
+}
+
+.hero {
+    padding: 35px;
+    border-radius: 24px;
+    background:
+        linear-gradient(
+            135deg,
+            rgba(30,41,59,0.95),
+            rgba(15,23,42,0.90)
+        );
+    border: 1px solid rgba(148,163,184,0.15);
+    margin-bottom: 25px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+}
+
+.hero-title {
+    font-size: 48px;
+    font-weight: 800;
+    letter-spacing: -2px;
+    margin-bottom: 5px;
+}
+
+.hero-subtitle {
+    font-size: 18px;
+    color: #94a3b8;
+}
+
+.badge {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(99,102,241,0.15);
+    color: #a5b4fc;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 15px;
+}
+
+.card {
+    padding: 24px;
+    border-radius: 20px;
+    background: rgba(15,23,42,0.75);
+    border: 1px solid rgba(148,163,184,0.13);
+    margin-bottom: 20px;
+}
+
+.result-card {
+    padding: 30px;
+    border-radius: 22px;
+    background: linear-gradient(
+        145deg,
+        rgba(30,41,59,0.95),
+        rgba(15,23,42,0.85)
+    );
+    border: 1px solid rgba(148,163,184,0.15);
+    text-align: center;
+}
+
+.result-label {
+    color: #94a3b8;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+}
+
+.result-value {
+    font-size: 38px;
+    font-weight: 800;
+    margin: 8px 0;
+}
+
+.confidence-value {
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.section-title {
+    font-size: 23px;
+    font-weight: 700;
+    margin-top: 15px;
+    margin-bottom: 15px;
+}
+
+.info-box {
+    padding: 18px;
+    border-radius: 16px;
+    background: rgba(30,41,59,0.65);
+    border: 1px solid rgba(148,163,184,0.12);
+}
+
+.warning {
+    padding: 18px;
+    border-radius: 16px;
+    background: rgba(245,158,11,0.08);
+    border: 1px solid rgba(245,158,11,0.25);
+    color: #fbbf24;
+}
+
+.footer {
+    text-align: center;
+    color: #64748b;
+    font-size: 12px;
+    padding-top: 30px;
+}
+
+div[data-testid="stFileUploader"] {
+    border-radius: 18px;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+
+# ============================================================
+# CONSTANTS
 # ============================================================
 
 REPO_ID = "Makky07/MammoSense-breast-ultrasound"
+MODEL_FILENAME = "gaia_busi_vit_small.pt"
 
 IMAGE_SIZE = 224
 
@@ -35,301 +191,38 @@ CLASS_NAMES = [
     "Malignant"
 ]
 
+DEVICE = torch.device(
+    "cuda" if torch.cuda.is_available() else "cpu"
+)
+
 
 # ============================================================
-# PREMIUM UI
+# HEADER
 # ============================================================
 
 st.markdown("""
-<style>
+<div class="hero">
 
-.stApp {
-    background: #F7F9FC;
-}
+<div class="badge">
+AI-ASSISTED BREAST ULTRASOUND ANALYSIS
+</div>
 
-.block-container {
-    max-width: 1250px;
-    padding-top: 2rem;
-    padding-bottom: 4rem;
-}
+<div class="hero-title">
+MammoSense
+</div>
 
-#MainMenu {
-    visibility: hidden;
-}
+<div class="hero-subtitle">
+Vision Transformer-powered analysis of breast ultrasound images.
+</div>
 
-footer {
-    visibility: hidden;
-}
-
-header {
-    visibility: hidden;
-}
-
-/* HERO */
-
-.hero {
-    background:
-        radial-gradient(
-            circle at 90% 20%,
-            rgba(96,165,250,0.30),
-            transparent 30%
-        ),
-        linear-gradient(
-            135deg,
-            #0F172A,
-            #172554 55%,
-            #1D4ED8
-        );
-
-    border-radius: 28px;
-    padding: 42px 45px;
-    margin-bottom: 30px;
-    color: white;
-
-    box-shadow:
-        0 20px 60px rgba(15,23,42,0.15);
-}
-
-.hero-top {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-}
-
-.logo {
-    width: 58px;
-    height: 58px;
-    border-radius: 16px;
-
-    background: rgba(255,255,255,0.12);
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    font-size: 30px;
-
-    border: 1px solid rgba(255,255,255,0.18);
-}
-
-.hero h1 {
-    font-size: 44px;
-    font-weight: 750;
-    letter-spacing: -1.5px;
-    margin: 0;
-}
-
-.hero-subtitle {
-    font-size: 17px;
-    margin-top: 16px;
-    color: #DBEAFE;
-    max-width: 720px;
-    line-height: 1.7;
-}
-
-.hero-badge {
-    display: inline-block;
-    margin-top: 22px;
-    padding: 7px 13px;
-    border-radius: 100px;
-
-    background: rgba(255,255,255,0.10);
-
-    border: 1px solid rgba(255,255,255,0.16);
-
-    font-size: 13px;
-    color: #E0F2FE;
-}
-
-/* HEADINGS */
-
-.section-title {
-    font-size: 26px;
-    font-weight: 720;
-    color: #0F172A;
-    letter-spacing: -0.5px;
-    margin-top: 20px;
-    margin-bottom: 6px;
-}
-
-.section-description {
-    color: #64748B;
-    font-size: 15px;
-    margin-bottom: 22px;
-}
-
-/* CARDS */
-
-.card {
-    background: white;
-    border: 1px solid #E5EAF1;
-    border-radius: 20px;
-    padding: 25px;
-
-    box-shadow:
-        0 8px 30px rgba(15,23,42,0.04);
-}
-
-.card-title {
-    font-size: 16px;
-    font-weight: 700;
-    color: #0F172A;
-    margin-bottom: 8px;
-}
-
-/* STATUS */
-
-.status {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-
-    padding: 7px 12px;
-
-    border-radius: 100px;
-
-    background: #ECFDF5;
-
-    color: #047857;
-
-    font-size: 13px;
-    font-weight: 700;
-}
-
-.status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #10B981;
-}
-
-/* RESULT */
-
-.result-card {
-    background: white;
-    border-radius: 22px;
-    padding: 28px;
-
-    border: 1px solid #E5EAF1;
-
-    box-shadow:
-        0 8px 30px rgba(15,23,42,0.05);
-}
-
-.result-label {
-    color: #64748B;
-    font-size: 13px;
-
-    text-transform: uppercase;
-    letter-spacing: 1px;
-
-    font-weight: 700;
-}
-
-.result-value {
-    font-size: 38px;
-    font-weight: 780;
-
-    color: #0F172A;
-
-    margin-top: 5px;
-}
-
-.result-confidence {
-    color: #2563EB;
-    font-weight: 700;
-    font-size: 16px;
-}
-
-/* EXPLAINABILITY */
-
-.explain-card {
-    background: white;
-
-    border: 1px solid #E5EAF1;
-
-    border-radius: 22px;
-
-    padding: 26px;
-
-    box-shadow:
-        0 8px 30px rgba(15,23,42,0.04);
-}
-
-.explain-title {
-    font-size: 22px;
-    font-weight: 750;
-    color: #0F172A;
-}
-
-.explain-description {
-    color: #64748B;
-    font-size: 14px;
-    line-height: 1.6;
-}
-
-/* DISCLAIMER */
-
-.disclaimer {
-    background: #FFF7ED;
-
-    border: 1px solid #FED7AA;
-
-    border-radius: 18px;
-
-    padding: 22px;
-
-    color: #7C2D12;
-
-    line-height: 1.65;
-
-    font-size: 14px;
-}
-
-/* FOOTER */
-
-.footer {
-    text-align: center;
-    color: #94A3B8;
-    font-size: 12px;
-    margin-top: 40px;
-}
-
-/* MOBILE */
-
-@media (max-width: 768px) {
-
-    .block-container {
-        padding-left: 1rem;
-        padding-right: 1rem;
-    }
-
-    .hero {
-        padding: 28px 25px;
-        border-radius: 22px;
-    }
-
-    .hero h1 {
-        font-size: 34px;
-    }
-
-    .hero-subtitle {
-        font-size: 15px;
-    }
-
-    .result-value {
-        font-size: 32px;
-    }
-
-}
-
-</style>
+</div>
 """, unsafe_allow_html=True)
 
 
 # ============================================================
-# MODEL
-# EXACT ARCHITECTURE USED DURING TRAINING
+# MODEL ARCHITECTURE
+# IMPORTANT:
+# This MUST match the architecture used during training.
 # ============================================================
 
 class BUSIViT(nn.Module):
@@ -345,7 +238,6 @@ class BUSIViT(nn.Module):
         )
 
         self.head = nn.Sequential(
-
             nn.Linear(
                 self.backbone.embed_dim,
                 1024
@@ -384,32 +276,11 @@ class BUSIViT(nn.Module):
 @st.cache_resource
 def download_model():
 
-    files = list_repo_files(
+    return hf_hub_download(
         repo_id=REPO_ID,
+        filename=MODEL_FILENAME,
         repo_type="model"
     )
-
-    model_files = [
-        f for f in files
-        if f.lower().endswith(".pt")
-    ]
-
-    if not model_files:
-
-        raise FileNotFoundError(
-            "No .pt model file was found in the "
-            "MammoSense Hugging Face repository."
-        )
-
-    model_filename = model_files[0]
-
-    model_path = hf_hub_download(
-        repo_id=REPO_ID,
-        filename=model_filename,
-        repo_type="model"
-    )
-
-    return model_path, model_filename
 
 
 # ============================================================
@@ -419,35 +290,66 @@ def download_model():
 @st.cache_resource
 def load_model():
 
-    model_path, model_filename = download_model()
+    model_path = download_model()
 
     checkpoint = torch.load(
         model_path,
-        map_location="cpu",
-        weights_only=False
+        map_location="cpu"
     )
 
     model = BUSIViT(
-        num_classes=checkpoint["num_classes"]
+        num_classes=checkpoint.get(
+            "num_classes",
+            3
+        )
     )
 
+    state_dict = checkpoint[
+        "model_state_dict"
+    ]
+
+    # --------------------------------------------------------
+    # Remove possible Lightning prefixes if present
+    # --------------------------------------------------------
+
+    cleaned_state_dict = {}
+
+    for key, value in state_dict.items():
+
+        new_key = key
+
+        if new_key.startswith(
+            "model."
+        ):
+            new_key = new_key[6:]
+
+        if new_key.startswith(
+            "module."
+        ):
+            new_key = new_key[7:]
+
+        cleaned_state_dict[
+            new_key
+        ] = value
+
+    # --------------------------------------------------------
+    # Load exact trained weights
+    # --------------------------------------------------------
+
     model.load_state_dict(
-        checkpoint["model_state_dict"],
+        cleaned_state_dict,
         strict=True
     )
 
+    model.to(DEVICE)
+
     model.eval()
 
-    return (
-        model,
-        checkpoint,
-        model_filename
-    )
+    return model, checkpoint
 
 
 # ============================================================
-# PREPROCESSING
-# SAME AS TRAINING EVALUATION
+# IMAGE TRANSFORM
 # ============================================================
 
 transform = T.Compose([
@@ -475,171 +377,207 @@ transform = T.Compose([
 
 
 # ============================================================
-# VIT GRAD-CAM
+# GRAD-CAM FOR VISION TRANSFORMER
 # ============================================================
 
-class ViTGradCAM:
+def generate_vit_gradcam(
+    model,
+    image_tensor,
+    class_index
+):
 
-    def __init__(self, model):
+    activations = []
+    gradients = []
 
-        self.model = model
+    # --------------------------------------------------------
+    # Final transformer block
+    # --------------------------------------------------------
 
-        self.activations = None
-        self.gradients = None
+    target_layer = (
+        model.backbone.blocks[-1]
+    )
 
-        # Last transformer block
-        self.target_layer = (
-            model.backbone.blocks[-1].norm1
-        )
-
-        self.forward_handle = (
-            self.target_layer.register_forward_hook(
-                self.save_activation
-            )
-        )
-
-        self.backward_handle = (
-            self.target_layer.register_full_backward_hook(
-                self.save_gradient
-            )
-        )
-
-    def save_activation(
-        self,
+    def forward_hook(
         module,
         input,
         output
     ):
 
-        self.activations = output
+        activations.append(
+            output
+        )
 
-    def save_gradient(
-        self,
+    def backward_hook(
         module,
         grad_input,
         grad_output
     ):
 
-        self.gradients = grad_output[0]
-
-    def generate(
-        self,
-        input_tensor,
-        class_index
-    ):
-
-        self.model.zero_grad()
-
-        output = self.model(
-            input_tensor
+        gradients.append(
+            grad_output[0]
         )
 
-        score = output[
+    forward_handle = (
+        target_layer.register_forward_hook(
+            forward_hook
+        )
+    )
+
+    backward_handle = (
+        target_layer.register_full_backward_hook(
+            backward_hook
+        )
+    )
+
+    try:
+
+        model.zero_grad(
+            set_to_none=True
+        )
+
+        # IMPORTANT:
+        # Do NOT use torch.no_grad()
+        logits = model(
+            image_tensor
+        )
+
+        score = logits[
             0,
             class_index
         ]
 
         score.backward()
 
+        if not activations:
+
+            raise RuntimeError(
+                "Grad-CAM activation was not captured."
+            )
+
+        if not gradients:
+
+            raise RuntimeError(
+                "Grad-CAM gradient was not captured."
+            )
+
+        activation = activations[0]
+
+        gradient = gradients[0]
+
+        # ----------------------------------------------------
+        # Some timm ViT versions return:
+        #
+        # [B, Tokens, Embedding]
+        #
+        # Others can return different arrangements.
+        # ----------------------------------------------------
+
+        if activation.ndim != 3:
+
+            raise RuntimeError(
+                "Unexpected ViT activation shape: "
+                + str(
+                    tuple(
+                        activation.shape
+                    )
+                )
+            )
+
+        # Remove CLS token
+        activation = activation[
+            :,
+            1:,
+            :
+        ]
+
+        gradient = gradient[
+            :,
+            1:,
+            :
+        ]
+
+        num_patches = (
+            activation.shape[1]
+        )
+
+        grid_size = int(
+            np.sqrt(
+                num_patches
+            )
+        )
+
         if (
-            self.activations is None
-            or self.gradients is None
+            grid_size *
+            grid_size
+            != num_patches
         ):
 
             raise RuntimeError(
-                "Grad-CAM activations or gradients "
-                "could not be captured."
+                f"Cannot create Grad-CAM "
+                f"grid from {num_patches} "
+                f"patches."
             )
-
-        activations = self.activations
-        gradients = self.gradients
 
         # ----------------------------------------------------
-        # ViT output can be:
-        #
-        # [batch, tokens, channels]
-        #
-        # We remove CLS token.
+        # Grad-CAM weighting
         # ----------------------------------------------------
 
-        if activations.ndim == 3:
+        weights = gradient.mean(
+            dim=1,
+            keepdim=True
+        )
 
-            activations = activations[:, 1:, :]
-
-            gradients = gradients[:, 1:, :]
-
-            tokens = activations.shape[1]
-
-            grid_size = int(
-                np.sqrt(tokens)
-            )
-
-            if (
-                grid_size * grid_size
-                != tokens
-            ):
-
-                raise RuntimeError(
-                    f"Unexpected ViT token count: {tokens}"
-                )
-
-            activations = activations.reshape(
-                1,
-                grid_size,
-                grid_size,
-                -1
-            )
-
-            gradients = gradients.reshape(
-                1,
-                grid_size,
-                grid_size,
-                -1
-            )
-
-            # Channel weighting
-            weights = gradients.mean(
-                dim=(1, 2),
-                keepdim=True
-            )
-
-            cam = (
-                activations * weights
-            ).sum(dim=-1)
-
-        else:
-
-            raise RuntimeError(
-                "Unexpected ViT activation shape."
-            )
+        cam = (
+            activation *
+            weights
+        ).sum(
+            dim=2
+        )
 
         cam = torch.relu(
             cam
         )
 
-        cam = cam.squeeze().detach().cpu().numpy()
+        cam = cam.reshape(
+            grid_size,
+            grid_size
+        )
+
+        cam = (
+            cam
+            .detach()
+            .cpu()
+            .numpy()
+        )
 
         # Normalize
+
         cam -= cam.min()
 
-        if cam.max() > 0:
+        max_value = cam.max()
 
-            cam /= cam.max()
+        if max_value > 0:
+
+            cam /= max_value
 
         return cam
 
-    def close(self):
+    finally:
 
-        self.forward_handle.remove()
+        forward_handle.remove()
 
-        self.backward_handle.remove()
+        backward_handle.remove()
+
+        model.zero_grad(
+            set_to_none=True
+        )
 
 
 # ============================================================
 # CREATE HEATMAP
 # ============================================================
 
-def create_heatmap(
+def create_gradcam_overlay(
     image,
     cam
 ):
@@ -652,13 +590,14 @@ def create_heatmap(
         original.shape[:2]
     )
 
-    cam_resized = cv2.resize(
+    cam = cv2.resize(
         cam,
-        (width, height)
+        (width, height),
+        interpolation=cv2.INTER_LINEAR
     )
 
     heatmap = np.uint8(
-        255 * cam_resized
+        255 * cam
     )
 
     heatmap = cv2.applyColorMap(
@@ -671,124 +610,89 @@ def create_heatmap(
         cv2.COLOR_BGR2RGB
     )
 
-    overlay = (
-        0.55 * heatmap
-        +
-        0.45 * original
-    )
-
-    overlay = np.clip(
-        overlay,
-        0,
-        255
-    ).astype(np.uint8)
-
-    return (
+    overlay = cv2.addWeighted(
+        original,
+        0.55,
         heatmap,
-        overlay
-    )
-
-
-# ============================================================
-# PREDICTION
-# ============================================================
-
-def predict(
-    image,
-    model
-):
-
-    image_rgb = image.convert(
-        "RGB"
-    )
-
-    tensor = transform(
-        image_rgb
-    )
-
-    tensor = tensor.unsqueeze(
+        0.45,
         0
     )
 
-    tensor.requires_grad_(True)
-
-    # Grad-CAM requires gradients
-    model.zero_grad()
-
-    logits = model(
-        tensor
-    )
-
-    probabilities = torch.softmax(
-        logits,
-        dim=1
-    )[0]
-
-    predicted_index = torch.argmax(
-        probabilities
-    ).item()
-
-    predicted_class = CLASS_NAMES[
-        predicted_index
-    ]
-
-    # Generate Grad-CAM
-    gradcam = ViTGradCAM(
-        model
-    )
-
-    cam = gradcam.generate(
-        tensor,
-        predicted_index
-    )
-
-    gradcam.close()
-
-    return (
-        predicted_class,
-        predicted_index,
-        probabilities.detach().cpu().numpy(),
-        cam
-    )
+    return heatmap, overlay
 
 
 # ============================================================
-# HERO
+# SIDEBAR
 # ============================================================
 
-st.markdown("""
-<div class="hero">
+with st.sidebar:
 
-<div class="hero-top">
+    st.markdown(
+        "## 🩺 MammoSense"
+    )
 
-<div class="logo">
-🩺
-</div>
+    st.markdown(
+        "---"
+    )
 
-<div>
+    st.markdown(
+        "### Model"
+    )
 
-<h1>MammoSense</h1>
+    st.write(
+        "ViT-Small Patch16-224"
+    )
 
-</div>
+    st.markdown(
+        "### Classes"
+    )
 
-</div>
+    st.write(
+        "• Normal\n"
+        "• Benign\n"
+        "• Malignant"
+    )
 
-<div class="hero-subtitle">
+    st.markdown(
+        "### Input"
+    )
 
-AI-assisted breast ultrasound analysis powered by
-a Vision Transformer trained on the BUSI dataset.
+    st.write(
+        "Breast ultrasound image"
+    )
 
-</div>
+    st.markdown(
+        "### Image size"
+    )
 
-<div class="hero-badge">
+    st.write(
+        "224 × 224 pixels"
+    )
 
-RESEARCH AI &nbsp;•&nbsp; BUSI &nbsp;•&nbsp;
-ViT-SMALL &nbsp;•&nbsp; EXPLAINABLE AI
+    st.markdown(
+        "### Runtime"
+    )
 
-</div>
+    if DEVICE.type == "cuda":
 
-</div>
-""", unsafe_allow_html=True)
+        st.success(
+            "GPU acceleration"
+        )
+
+    else:
+
+        st.info(
+            "CPU inference"
+        )
+
+    st.markdown(
+        "---"
+    )
+
+    show_gradcam = st.checkbox(
+        "🔍 Generate Grad-CAM",
+        value=True
+    )
 
 
 # ============================================================
@@ -798,67 +702,86 @@ ViT-SMALL &nbsp;•&nbsp; EXPLAINABLE AI
 try:
 
     with st.spinner(
-        "Initializing MammoSense AI..."
+        "Loading MammoSense AI model..."
     ):
 
-        model, checkpoint, model_filename = (
+        model, checkpoint = (
             load_model()
         )
-
-    st.markdown(
-        """
-        <div class="status">
-        <span class="status-dot"></span>
-        AI model online
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
 
 except Exception as e:
 
     st.error(
-        "MammoSense could not initialize."
+        "Unable to load the MammoSense model."
     )
 
-    with st.expander(
-        "Technical details"
-    ):
-
-        st.code(
-            str(e)
-        )
+    st.code(
+        str(e)
+    )
 
     st.stop()
 
 
 # ============================================================
-# INTRO
+# MODEL STATUS
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    'Breast Ultrasound Analysis'
-    '</div>',
+    '<div class="card">',
     unsafe_allow_html=True
 )
+
+status_col1, status_col2, status_col3 = (
+    st.columns(3)
+)
+
+with status_col1:
+
+    st.markdown(
+        "**MODEL STATUS**"
+    )
+
+    st.success(
+        "● Online"
+    )
+
+with status_col2:
+
+    st.markdown(
+        "**ARCHITECTURE**"
+    )
+
+    st.write(
+        "ViT-Small"
+    )
+
+with status_col3:
+
+    st.markdown(
+        "**CLASSES**"
+    )
+
+    st.write(
+        "3-class classification"
+    )
 
 st.markdown(
-    '<div class="section-description">'
-    'Upload an ultrasound image to generate an '
-    'AI classification and visualize the regions '
-    'that influenced the model prediction.'
-    '</div>',
+    "</div>",
     unsafe_allow_html=True
 )
 
 
 # ============================================================
-# UPLOAD
+# UPLOAD SECTION
 # ============================================================
+
+st.markdown(
+    '<div class="section-title">Upload Ultrasound Image</div>',
+    unsafe_allow_html=True
+)
 
 uploaded_file = st.file_uploader(
-    "Upload ultrasound image",
+    "Upload a breast ultrasound image",
     type=[
         "jpg",
         "jpeg",
@@ -871,126 +794,106 @@ uploaded_file = st.file_uploader(
 )
 
 
-if uploaded_file is None:
-
-    st.markdown("""
-    <div class="card">
-
-    <div style="
-        text-align:center;
-        padding:30px;
-    ">
-
-    <div style="
-        font-size:45px;
-        margin-bottom:12px;
-    ">
-    🖼️
-    </div>
-
-    <div style="
-        font-size:21px;
-        font-weight:750;
-        color:#0F172A;
-    ">
-    Upload a breast ultrasound
-    </div>
-
-    <div style="
-        color:#64748B;
-        margin-top:8px;
-    ">
-    JPG, JPEG, PNG, BMP or TIFF
-    </div>
-
-    </div>
-
-    </div>
-    """, unsafe_allow_html=True)
-
-
 # ============================================================
-# ANALYSIS
+# MAIN ANALYSIS
 # ============================================================
 
-if uploaded_file:
+if uploaded_file is not None:
 
     image = Image.open(
         uploaded_file
     ).convert("RGB")
 
+    st.markdown(
+        '<div class="section-title">Image Analysis</div>',
+        unsafe_allow_html=True
+    )
+
+    image_col, result_col = (
+        st.columns(
+            [1.15, 1]
+        )
+    )
+
+    with image_col:
+
+        st.image(
+            image,
+            caption="Uploaded ultrasound image",
+            use_container_width=True
+        )
+
+    # --------------------------------------------------------
+    # PREPARE IMAGE
+    # --------------------------------------------------------
+
+    image_tensor = transform(
+        image
+    ).unsqueeze(
+        0
+    ).to(
+        DEVICE
+    )
+
+    # --------------------------------------------------------
+    # PREDICTION
+    # --------------------------------------------------------
+
     try:
 
-        with st.spinner(
-            "Analyzing ultrasound..."
-        ):
+        model.eval()
 
-            (
-                prediction,
-                predicted_index,
-                probabilities,
-                cam
-            ) = predict(
-                image,
-                model
+        # Do normal inference first
+        with torch.no_grad():
+
+            logits = model(
+                image_tensor
             )
+
+            probabilities = (
+                torch.softmax(
+                    logits,
+                    dim=1
+                )
+            )
+
+            predicted_class = (
+                probabilities
+                .argmax(
+                    dim=1
+                )
+                .item()
+            )
+
+        predicted_label = (
+            CLASS_NAMES[
+                predicted_class
+            ]
+        )
+
+        confidence = (
+            probabilities[
+                0,
+                predicted_class
+            ]
+            .item()
+        )
 
     except Exception as e:
 
         st.error(
-            "Grad-CAM analysis failed."
+            "Prediction failed."
         )
 
-        with st.expander(
-            "Technical details"
-        ):
-
-            st.code(
-                str(e)
-            )
+        st.code(
+            str(e)
+        )
 
         st.stop()
 
-    confidence = (
-        float(
-            probabilities.max()
-        ) * 100
-    )
-
-
-    # ========================================================
-    # PRIMARY RESULT
-    # ========================================================
-
-    st.markdown(
-        "<br>",
-        unsafe_allow_html=True
-    )
-
-    image_col, result_col = st.columns(
-        [1.05, 0.95],
-        gap="large"
-    )
-
-
-    # IMAGE
-
-    with image_col:
-
-        st.markdown(
-            '<div class="card-title">'
-            'Ultrasound'
-            '</div>',
-            unsafe_allow_html=True
-        )
-
-        st.image(
-            image,
-            use_container_width=True
-        )
-
-
+    # --------------------------------------------------------
     # RESULT
+    # --------------------------------------------------------
 
     with result_col:
 
@@ -1001,331 +904,213 @@ if uploaded_file:
 
         st.markdown(
             '<div class="result-label">'
-            'AI classification'
+            'AI PREDICTION'
             '</div>',
             unsafe_allow_html=True
         )
 
         st.markdown(
             f'<div class="result-value">'
-            f'{prediction}'
+            f'{predicted_label}'
             f'</div>',
             unsafe_allow_html=True
         )
 
         st.markdown(
-            f'<div class="result-confidence">'
-            f'{confidence:.2f}% model probability'
+            '<div class="result-label">'
+            'MODEL CONFIDENCE'
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            f'<div class="confidence-value">'
+            f'{confidence * 100:.2f}%'
             f'</div>',
             unsafe_allow_html=True
         )
 
-        st.markdown(
-            "<br>",
-            unsafe_allow_html=True
+        st.progress(
+            float(confidence)
         )
-
-        st.markdown(
-            "**Probability distribution**"
-        )
-
-        for i, class_name in enumerate(
-            CLASS_NAMES
-        ):
-
-            probability = (
-                float(
-                    probabilities[i]
-                ) * 100
-            )
-
-            st.write(
-                f"**{class_name}**"
-            )
-
-            st.progress(
-                min(
-                    probability / 100,
-                    1.0
-                )
-            )
-
-            st.caption(
-                f"{probability:.2f}%"
-            )
 
         st.markdown(
             '</div>',
             unsafe_allow_html=True
         )
 
-
     # ========================================================
-    # EXPLAINABILITY
-    # ========================================================
-
-    st.markdown(
-        "<br>",
-        unsafe_allow_html=True
-    )
-
-    st.markdown(
-        """
-        <div class="explain-card">
-
-        <div class="explain-title">
-        Where is MammoSense looking?
-        </div>
-
-        <div class="explain-description">
-
-        The attention map below provides a visual
-        explanation of regions that contributed to
-        the model's selected prediction.
-
-        Red/yellow areas represent stronger model
-        activation; blue areas represent weaker
-        activation.
-
-        </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-    # CREATE HEATMAP
-
-    heatmap, overlay = create_heatmap(
-        image,
-        cam
-    )
-
-
-    # ========================================================
-    # GRAD-CAM VISUALS
+    # PROBABILITIES
     # ========================================================
 
     st.markdown(
-        "<br>",
+        '<div class="section-title">'
+        'Prediction Probabilities'
+        '</div>',
         unsafe_allow_html=True
     )
 
-    cam1, cam2, cam3 = st.columns(
-        3,
-        gap="medium"
-    )
+    prob_cols = st.columns(3)
 
+    for i, class_name in enumerate(
+        CLASS_NAMES
+    ):
 
-    with cam1:
+        probability = (
+            probabilities[
+                0,
+                i
+            ]
+            .item()
+        )
+
+        with prob_cols[i]:
+
+            st.markdown(
+                '<div class="info-box">',
+                unsafe_allow_html=True
+            )
+
+            st.markdown(
+                f"**{class_name}**"
+            )
+
+            st.progress(
+                float(
+                    probability
+                )
+            )
+
+            st.write(
+                f"{probability * 100:.2f}%"
+            )
+
+            st.markdown(
+                '</div>',
+                unsafe_allow_html=True
+            )
+
+    # ========================================================
+    # GRAD-CAM
+    # ========================================================
+
+    if show_gradcam:
 
         st.markdown(
-            "**Original**"
+            '<div class="section-title">'
+            '🔍 AI Explainability'
+            '</div>',
+            unsafe_allow_html=True
         )
 
-        st.image(
-            image,
-            use_container_width=True
+        st.caption(
+            "Grad-CAM highlights image regions "
+            "that contributed most strongly to "
+            "the selected prediction."
         )
 
+        try:
 
-    with cam2:
+            # IMPORTANT:
+            # Grad-CAM requires gradients.
+            #
+            # Therefore we deliberately DO NOT
+            # use torch.no_grad() here.
 
-        st.markdown(
-            "**AI attention map**"
-        )
+            cam = generate_vit_gradcam(
+                model,
+                image_tensor,
+                predicted_class
+            )
 
-        st.image(
-            heatmap,
-            use_container_width=True
-        )
+            heatmap, overlay = (
+                create_gradcam_overlay(
+                    image,
+                    cam
+                )
+            )
 
+            cam_col1, cam_col2 = (
+                st.columns(2)
+            )
 
-    with cam3:
+            with cam_col1:
 
-        st.markdown(
-            "**Attention overlay**"
-        )
+                st.image(
+                    heatmap,
+                    caption=(
+                        "MammoSense attention map"
+                    ),
+                    use_container_width=True
+                )
 
-        st.image(
-            overlay,
-            use_container_width=True
-        )
+            with cam_col2:
 
+                st.image(
+                    overlay,
+                    caption=(
+                        "AI attention overlay"
+                    ),
+                    use_container_width=True
+                )
+
+        except Exception as e:
+
+            st.warning(
+                "The prediction worked, "
+                "but Grad-CAM could not be "
+                "generated for this model."
+            )
+
+            with st.expander(
+                "Grad-CAM technical details"
+            ):
+
+                st.code(
+                    str(e)
+                )
 
     # ========================================================
     # INTERPRETATION
     # ========================================================
 
-    st.info(
-        "The heatmap shows where the model's internal "
-        "features were most strongly activated for "
-        "the selected class. It is an AI explainability "
-        "visualization, not a clinical lesion segmentation."
-    )
-
-
-    # ========================================================
-    # SUMMARY CARDS
-    # ========================================================
-
-    st.markdown(
-        "<br>",
-        unsafe_allow_html=True
-    )
-
     st.markdown(
         '<div class="section-title">'
-        'Analysis overview'
+        'Understanding the Result'
         '</div>',
         unsafe_allow_html=True
     )
 
-    col1, col2, col3 = st.columns(
-        3
-    )
+    if predicted_label == "Normal":
 
-
-    with col1:
-
-        st.markdown(
-            '<div class="card">',
-            unsafe_allow_html=True
+        st.info(
+            "The model classified this image "
+            "as Normal. This means the model "
+            "did not identify a pattern strongly "
+            "associated with the benign or "
+            "malignant classes."
         )
 
-        st.markdown(
-            "**Top prediction**"
+    elif predicted_label == "Benign":
+
+        st.info(
+            "The model classified this image "
+            "as Benign. Benign findings are "
+            "non-cancerous abnormalities. "
+            "They can still require clinical "
+            "assessment depending on the finding."
         )
 
-        st.markdown(
-            f"### {prediction}"
+    else:
+
+        st.warning(
+            "The model classified this image "
+            "as Malignant. Malignant findings "
+            "can be associated with cancer. "
+            "This AI result must NOT be used "
+            "as a diagnosis and requires "
+            "professional clinical assessment."
         )
-
-        st.caption(
-            "Highest probability class"
-        )
-
-        st.markdown(
-            '</div>',
-            unsafe_allow_html=True
-        )
-
-
-    with col2:
-
-        st.markdown(
-            '<div class="card">',
-            unsafe_allow_html=True
-        )
-
-        st.markdown(
-            "**Model probability**"
-        )
-
-        st.markdown(
-            f"### {confidence:.1f}%"
-        )
-
-        st.caption(
-            "Probability assigned to top class"
-        )
-
-        st.markdown(
-            '</div>',
-            unsafe_allow_html=True
-        )
-
-
-    with col3:
-
-        st.markdown(
-            '<div class="card">',
-            unsafe_allow_html=True
-        )
-
-        st.markdown(
-            "**Explainability**"
-        )
-
-        st.markdown(
-            "### ViT Grad-CAM"
-        )
-
-        st.caption(
-            "Attention visualization enabled"
-        )
-
-        st.markdown(
-            '</div>',
-            unsafe_allow_html=True
-        )
-
-
-# ============================================================
-# MODEL INFORMATION
-# ============================================================
-
-st.markdown(
-    "<br>",
-    unsafe_allow_html=True
-)
-
-with st.expander(
-    "MammoSense model information"
-):
-
-    c1, c2, c3 = st.columns(
-        3
-    )
-
-    with c1:
-
-        st.markdown(
-            "**Architecture**"
-        )
-
-        st.write(
-            "ViT-Small Patch16-224"
-        )
-
-    with c2:
-
-        st.markdown(
-            "**Dataset**"
-        )
-
-        st.write(
-            "BUSI"
-        )
-
-    with c3:
-
-        st.markdown(
-            "**Classes**"
-        )
-
-        st.write(
-            "Normal / Benign / Malignant"
-        )
-
-    st.divider()
-
-    st.write(
-        f"**Model file:** `{model_filename}`"
-    )
-
-    st.write(
-        "**Input resolution:** 224 × 224"
-    )
-
-    st.write(
-        "**Framework:** PyTorch + timm"
-    )
-
-    st.write(
-        "**Explainability:** ViT Grad-CAM"
-    )
 
 
 # ============================================================
@@ -1333,53 +1118,90 @@ with st.expander(
 # ============================================================
 
 st.markdown(
-    "<br>",
+    '<div class="warning">',
     unsafe_allow_html=True
 )
 
-st.markdown("""
-<div class="disclaimer">
+st.markdown(
+    """
+### ⚠️ Important Medical Disclaimer
 
-<strong>⚠️ Research & Medical Disclaimer</strong>
+**MammoSense is an AI research and educational
+prototype, not a medical diagnostic device.**
 
-<br><br>
+Its predictions are generated by a machine-learning
+model trained on the BUSI breast ultrasound dataset.
 
-MammoSense is an experimental AI research prototype
-for breast ultrasound image classification.
+The output should **not** be used to diagnose,
+exclude, or treat breast cancer.
 
-It is <strong>not a medical device</strong> and does not
-provide a medical diagnosis.
+A qualified radiologist or other appropriate
+healthcare professional must interpret ultrasound
+images and make clinical decisions.
 
-A prediction of <strong>Malignant</strong> does not by
-itself establish that a patient has breast cancer.
-Similarly, a <strong>Normal</strong> or
-<strong>Benign</strong> prediction does not definitively
-exclude disease.
+External images may differ substantially from
+the training dataset, so model performance in
+real-world clinical settings may be different.
+"""
+)
 
-The Grad-CAM visualization indicates regions associated
-with the model's prediction. It should not be interpreted
-as a definitive lesion boundary or clinical finding.
+st.markdown(
+    '</div>',
+    unsafe_allow_html=True
+)
 
-All clinical decisions should be made by qualified
-healthcare professionals using appropriate medical
-evaluation and diagnostic procedures.
 
-</div>
-""", unsafe_allow_html=True)
+# ============================================================
+# MODEL INFORMATION
+# ============================================================
+
+with st.expander(
+    "ℹ️ About the MammoSense model"
+):
+
+    st.write(
+        "**Architecture:** ViT-Small Patch16-224"
+    )
+
+    st.write(
+        "**Input:** Breast ultrasound image"
+    )
+
+    st.write(
+        "**Image size:** 224 × 224"
+    )
+
+    st.write(
+        "**Classes:** Normal, Benign, Malignant"
+    )
+
+    st.write(
+        "**Dataset:** BUSI Breast Ultrasound Images"
+    )
+
+    st.write(
+        "**Explainability:** ViT Grad-CAM"
+    )
+
+    st.write(
+        "**Model repository:** "
+        "Makky07/MammoSense-breast-ultrasound"
+    )
 
 
 # ============================================================
 # FOOTER
 # ============================================================
 
-st.markdown("""
+st.markdown(
+    """
 <div class="footer">
 
-MammoSense · Explainable Breast Ultrasound AI
+MammoSense • AI-assisted breast ultrasound research
 
-<br>
-
-ViT-Small Patch16-224 · BUSI · PyTorch
+For research and educational use only • Not a medical diagnosis
 
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True
+)

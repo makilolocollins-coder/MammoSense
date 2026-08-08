@@ -2,6 +2,7 @@ streamlit
 torch
 torchvision
 timm
-Pillow
-numpy
+pillow
 huggingface_hub
+numpy
+opencv-python-headless

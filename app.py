@@ -4,11 +4,11 @@ import torch.nn as nn
 import timm
 import torchvision.transforms as T
 from PIL import Image
-from huggingface_hub import hf_hub_download
+from huggingface_hub import hf_hub_download, list_repo_files
 
 
 # ============================================================
-# PAGE CONFIGURATION
+# MAMMOSENSE CONFIGURATION
 # ============================================================
 
 st.set_page_config(
@@ -17,6 +17,17 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+REPO_ID = "Makky07/MammoSense-breast-ultrasound"
+
+IMAGE_SIZE = 224
+NUM_CLASSES = 3
+
+CLASS_NAMES = [
+    "Normal",
+    "Benign",
+    "Malignant"
+]
 
 
 # ============================================================
@@ -36,8 +47,8 @@ st.markdown("""
 }
 
 .hero {
-    padding: 1.5rem 2rem;
-    border-radius: 18px;
+    padding: 1.8rem 2rem;
+    border-radius: 20px;
     background: linear-gradient(
         135deg,
         #172554 0%,
@@ -45,40 +56,40 @@ st.markdown("""
         #2563eb 100%
     );
     color: white;
-    margin-bottom: 25px;
+    margin-bottom: 28px;
 }
 
 .hero h1 {
-    font-size: 42px;
-    margin-bottom: 5px;
+    font-size: 44px;
+    margin-bottom: 8px;
 }
 
 .hero p {
-    font-size: 17px;
-    opacity: 0.9;
+    font-size: 18px;
+    opacity: 0.92;
 }
 
 .result-card {
-    padding: 22px;
+    padding: 24px;
     border-radius: 16px;
     background: white;
     border: 1px solid #e5e7eb;
     margin-bottom: 18px;
 }
 
+.info-card {
+    padding: 20px;
+    border-radius: 15px;
+    background: white;
+    border: 1px solid #e5e7eb;
+}
+
 .disclaimer {
-    padding: 18px;
-    border-radius: 12px;
+    padding: 20px;
+    border-radius: 14px;
     background-color: #fff7ed;
     border: 1px solid #fed7aa;
     color: #7c2d12;
-}
-
-.info-card {
-    padding: 18px;
-    border-radius: 14px;
-    background-color: white;
-    border: 1px solid #e5e7eb;
 }
 
 </style>
@@ -86,28 +97,7 @@ st.markdown("""
 
 
 # ============================================================
-# MODEL CONFIGURATION
-# ============================================================
-
-REPO_ID = "Makky07/MammoSense-breast-ultrasound"
-
-# IMPORTANT:
-# This is the exact filename currently stored on Hugging Face.
-MODEL_FILENAME = "gaia_busi_vit_small (1).pt"
-
-IMAGE_SIZE = 224
-
-CLASS_NAMES = [
-    "Normal",
-    "Benign",
-    "Malignant"
-]
-
-NUM_CLASSES = 3
-
-
-# ============================================================
-# EXACT MODEL ARCHITECTURE USED DURING TRAINING
+# EXACT BUSIVIT MODEL USED DURING TRAINING
 # ============================================================
 
 class BUSIViT(nn.Module):
@@ -116,14 +106,14 @@ class BUSIViT(nn.Module):
 
         super().__init__()
 
-        # EXACT BACKBONE USED DURING TRAINING
+        # EXACT BACKBONE FROM TRAINING
         self.backbone = timm.create_model(
             "vit_small_patch16_224",
             pretrained=False,
             num_classes=0
         )
 
-        # EXACT CLASSIFICATION HEAD USED DURING TRAINING
+        # EXACT CLASSIFICATION HEAD FROM TRAINING
         self.head = nn.Sequential(
 
             nn.Linear(
@@ -158,16 +148,42 @@ class BUSIViT(nn.Module):
 
 
 # ============================================================
-# DOWNLOAD MODEL
+# FIND AND DOWNLOAD MODEL FROM HUGGING FACE
 # ============================================================
 
 @st.cache_resource
 def download_model():
 
-    return hf_hub_download(
+    # Get the files currently inside the repository
+    files = list_repo_files(
         repo_id=REPO_ID,
-        filename=MODEL_FILENAME
+        repo_type="model"
     )
+
+    # Find all .pt files
+    model_files = [
+        file
+        for file in files
+        if file.lower().endswith(".pt")
+    ]
+
+    if not model_files:
+
+        raise FileNotFoundError(
+            "No .pt model file was found in the "
+            "MammoSense Hugging Face repository."
+        )
+
+    # Use the first .pt model found
+    model_filename = model_files[0]
+
+    model_path = hf_hub_download(
+        repo_id=REPO_ID,
+        filename=model_filename,
+        repo_type="model"
+    )
+
+    return model_path, model_filename
 
 
 # ============================================================
@@ -177,34 +193,39 @@ def download_model():
 @st.cache_resource
 def load_model():
 
-    model_path = download_model()
+    model_path, model_filename = download_model()
 
+    # Load checkpoint
     checkpoint = torch.load(
         model_path,
         map_location="cpu",
         weights_only=False
     )
 
+    # Create EXACT architecture used during training
     model = BUSIViT(
         num_classes=checkpoint["num_classes"]
     )
 
+    # Load trained weights
     model.load_state_dict(
         checkpoint["model_state_dict"],
         strict=True
     )
 
+    # Evaluation mode
     model.eval()
 
-    return model, checkpoint
+    return model, checkpoint, model_filename
 
 
 # ============================================================
-# IMAGE PREPROCESSING
-# EXACTLY MATCHES eval_transform USED DURING TESTING
+# PREPROCESSING
+# EXACTLY MATCHES TRAINING eval_transform
 # ============================================================
 
 transform = T.Compose([
+
     T.Resize(
         (IMAGE_SIZE, IMAGE_SIZE)
     ),
@@ -217,7 +238,6 @@ transform = T.Compose([
             0.456,
             0.406
         ],
-
         std=[
             0.229,
             0.224,
@@ -235,13 +255,15 @@ def predict(image, model):
 
     image = image.convert("RGB")
 
-    tensor = transform(image)
+    image_tensor = transform(image)
 
-    tensor = tensor.unsqueeze(0)
+    image_tensor = image_tensor.unsqueeze(0)
 
     with torch.no_grad():
 
-        logits = model(tensor)
+        logits = model(
+            image_tensor
+        )
 
         probabilities = torch.softmax(
             logits,
@@ -288,19 +310,21 @@ with st.sidebar:
     st.markdown("## MammoSense")
 
     st.markdown(
-        "### AI Breast Ultrasound Analysis"
+        "### Breast Ultrasound AI"
     )
 
     st.divider()
 
-    st.markdown("### Model Information")
+    st.markdown(
+        "### Model Information"
+    )
 
     st.write(
         "**Architecture:** ViT-Small Patch16-224"
     )
 
     st.write(
-        "**Input size:** 224 × 224"
+        "**Input:** 224 × 224 pixels"
     )
 
     st.write(
@@ -308,7 +332,7 @@ with st.sidebar:
     )
 
     st.write(
-        "**Training dataset:** BUSI"
+        "**Dataset:** BUSI"
     )
 
     st.write(
@@ -317,7 +341,7 @@ with st.sidebar:
 
     st.divider()
 
-    st.markdown("### Classes")
+    st.markdown("### Classification")
 
     st.write("🟢 Normal")
     st.write("🟡 Benign")
@@ -326,13 +350,13 @@ with st.sidebar:
     st.divider()
 
     st.caption(
-        "MammoSense is an AI research and "
-        "educational prototype."
+        "MammoSense is an experimental "
+        "AI research prototype."
     )
 
 
 # ============================================================
-# INTRODUCTION
+# MAIN INTRODUCTION
 # ============================================================
 
 st.markdown(
@@ -347,19 +371,20 @@ st.write(
 
 
 # ============================================================
-# MODEL LOADING
+# LOAD MODEL
 # ============================================================
 
 try:
 
     with st.spinner(
-        "Loading MammoSense AI model..."
+        "Connecting to MammoSense AI model..."
     ):
 
-        model, checkpoint = load_model()
+        model, checkpoint, model_filename = load_model()
 
     st.success(
-        "MammoSense model loaded successfully."
+        f"MammoSense model loaded successfully: "
+        f"{model_filename}"
     )
 
 except Exception as e:
@@ -368,7 +393,10 @@ except Exception as e:
         "Unable to load the MammoSense model."
     )
 
-    st.exception(e)
+    st.code(
+        str(e),
+        language="text"
+    )
 
     st.stop()
 
@@ -402,7 +430,7 @@ if uploaded_file is not None:
 
     st.divider()
 
-    left, right = st.columns(
+    image_column, result_column = st.columns(
         [1, 1]
     )
 
@@ -410,10 +438,10 @@ if uploaded_file is not None:
     # IMAGE
     # --------------------------------------------------------
 
-    with left:
+    with image_column:
 
         st.markdown(
-            "### Uploaded Image"
+            "### Uploaded Ultrasound"
         )
 
         st.image(
@@ -425,14 +453,14 @@ if uploaded_file is not None:
     # PREDICTION
     # --------------------------------------------------------
 
-    with right:
+    with result_column:
 
         st.markdown(
             "### AI Classification"
         )
 
         with st.spinner(
-            "Analyzing ultrasound image..."
+            "Analyzing image..."
         ):
 
             prediction, probabilities = predict(
@@ -455,7 +483,7 @@ if uploaded_file is not None:
         )
 
         st.metric(
-            "Model confidence",
+            "Highest model probability",
             f"{confidence:.2f}%"
         )
 
@@ -466,7 +494,7 @@ if uploaded_file is not None:
 
 
     # ========================================================
-    # PROBABILITY DISTRIBUTION
+    # PROBABILITIES
     # ========================================================
 
     st.divider()
@@ -475,7 +503,7 @@ if uploaded_file is not None:
         "## Prediction Probabilities"
     )
 
-    cols = st.columns(3)
+    probability_columns = st.columns(3)
 
     for i, class_name in enumerate(
         CLASS_NAMES
@@ -486,7 +514,7 @@ if uploaded_file is not None:
             * 100
         )
 
-        with cols[i]:
+        with probability_columns[i]:
 
             st.markdown(
                 f"### {class_name}"
@@ -505,7 +533,7 @@ if uploaded_file is not None:
 
 
     # ========================================================
-    # MODEL INTERPRETATION
+    # SUMMARY
     # ========================================================
 
     st.divider()
@@ -514,9 +542,9 @@ if uploaded_file is not None:
         "## Analysis Summary"
     )
 
-    summary_col1, summary_col2 = st.columns(2)
+    col1, col2 = st.columns(2)
 
-    with summary_col1:
+    with col1:
 
         st.markdown(
             '<div class="info-card">',
@@ -532,7 +560,7 @@ if uploaded_file is not None:
         )
 
         st.write(
-            f"The model assigned the highest "
+            f"The model assigned its highest "
             f"probability to **{prediction}**."
         )
 
@@ -541,8 +569,7 @@ if uploaded_file is not None:
             unsafe_allow_html=True
         )
 
-
-    with summary_col2:
+    with col2:
 
         st.markdown(
             '<div class="info-card">',
@@ -550,7 +577,7 @@ if uploaded_file is not None:
         )
 
         st.markdown(
-            "**Highest probability**"
+            "**Model probability**"
         )
 
         st.markdown(
@@ -558,9 +585,8 @@ if uploaded_file is not None:
         )
 
         st.write(
-            "This represents the model's "
-            "predicted probability for its "
-            "highest-scoring class."
+            "This is the model's probability "
+            "for its highest-scoring class."
         )
 
         st.markdown(
@@ -570,7 +596,50 @@ if uploaded_file is not None:
 
 
 # ============================================================
-# DISCLAIMER
+# MODEL INFORMATION
+# ============================================================
+
+st.divider()
+
+with st.expander(
+    "Model information"
+):
+
+    st.write(
+        "**Model:** MammoSense BUSI ViT"
+    )
+
+    st.write(
+        "**Architecture:** "
+        "vit_small_patch16_224"
+    )
+
+    st.write(
+        "**Input size:** 224 × 224"
+    )
+
+    st.write(
+        "**Classes:** Normal, Benign, Malignant"
+    )
+
+    st.write(
+        "**Training dataset:** BUSI "
+        "(Breast Ultrasound Images)"
+    )
+
+    st.write(
+        "**Image normalization:** "
+        "ImageNet mean/std"
+    )
+
+    st.write(
+        f"**Hugging Face repository:** "
+        f"{REPO_ID}"
+    )
+
+
+# ============================================================
+# MEDICAL DISCLAIMER
 # ============================================================
 
 st.divider()
@@ -578,20 +647,19 @@ st.divider()
 st.markdown("""
 <div class="disclaimer">
 
-### ⚠️ Important Medical Disclaimer
+<h3>⚠️ Important Medical Disclaimer</h3>
 
 MammoSense is an experimental AI research prototype
-and is **not a medical device or diagnostic system**.
+and is <b>not a medical device or diagnostic system</b>.
 
 Its predictions should not be used to diagnose,
 exclude, or confirm breast cancer.
 
-AI predictions may be incorrect, particularly for
-images that differ from the training dataset.
+AI predictions can be incorrect, particularly when
+images differ from the training data.
 
-Always seek evaluation by a qualified healthcare
-professional and appropriate clinical imaging
-assessment.
+Clinical assessment by a qualified healthcare
+professional is required for diagnosis.
 
 </div>
 """, unsafe_allow_html=True)
@@ -609,6 +677,6 @@ st.caption(
 )
 
 st.caption(
-    "Model: ViT-Small Patch16-224 • "
-    "Dataset: BUSI • 3-class classification"
+    "ViT-Small Patch16-224 • BUSI • "
+    "Normal / Benign / Malignant"
 )

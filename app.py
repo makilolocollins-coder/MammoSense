@@ -1,22 +1,18 @@
-
 import streamlit as st
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import timm
-from torchvision import transforms
+import torchvision.transforms as T
 from PIL import Image
-import numpy as np
 from huggingface_hub import hf_hub_download
-from datetime import datetime
 
 
 # ============================================================
-# PAGE CONFIG
+# PAGE CONFIGURATION
 # ============================================================
 
 st.set_page_config(
-    page_title="MammoSense | Breast Ultrasound AI",
+    page_title="MammoSense",
     page_icon="🩺",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -24,82 +20,65 @@ st.set_page_config(
 
 
 # ============================================================
-# STYLE
+# CUSTOM CSS
 # ============================================================
 
 st.markdown("""
 <style>
 
-.stApp {
-    background-color: #f5f7fb;
+.main {
+    background-color: #f7f9fc;
 }
 
-section[data-testid="stSidebar"] {
-    background-color: #0f172a;
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 3rem;
 }
 
-section[data-testid="stSidebar"] * {
-    color: white;
-}
-
-.mammo-header {
+.hero {
+    padding: 1.5rem 2rem;
+    border-radius: 18px;
     background: linear-gradient(
         135deg,
-        #0f172a,
-        #1e3a5f
+        #172554 0%,
+        #1e3a8a 55%,
+        #2563eb 100%
     );
-    padding: 32px;
-    border-radius: 20px;
+    color: white;
     margin-bottom: 25px;
 }
 
-.mammo-title {
-    color: white;
-    font-size: 40px;
-    font-weight: 800;
+.hero h1 {
+    font-size: 42px;
+    margin-bottom: 5px;
 }
 
-.mammo-subtitle {
-    color: #cbd5e1;
+.hero p {
     font-size: 17px;
+    opacity: 0.9;
 }
 
 .result-card {
+    padding: 22px;
+    border-radius: 16px;
     background: white;
-    padding: 25px;
-    border-radius: 18px;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-    text-align: center;
-}
-
-.result-title {
-    color: #64748b;
-    font-size: 14px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.result-value {
-    color: #0f172a;
-    font-size: 32px;
-    font-weight: 800;
-    margin-top: 8px;
+    border: 1px solid #e5e7eb;
+    margin-bottom: 18px;
 }
 
 .disclaimer {
-    background: #fff7ed;
-    border-left: 5px solid #f97316;
     padding: 18px;
-    border-radius: 10px;
-    margin-top: 25px;
+    border-radius: 12px;
+    background-color: #fff7ed;
+    border: 1px solid #fed7aa;
+    color: #7c2d12;
 }
 
-.footer {
-    text-align: center;
-    color: #64748b;
-    padding: 30px;
-    font-size: 12px;
+.info-card {
+    padding: 18px;
+    border-radius: 14px;
+    background-color: white;
+    border: 1px solid #e5e7eb;
 }
 
 </style>
@@ -107,48 +86,93 @@ section[data-testid="stSidebar"] * {
 
 
 # ============================================================
-# HUGGING FACE MODEL
+# MODEL CONFIGURATION
 # ============================================================
 
 REPO_ID = "Makky07/MammoSense-breast-ultrasound"
-MODEL_FILENAME = "gaia_busi_vit_small.pt"
 
+# IMPORTANT:
+# This is the exact filename currently stored on Hugging Face.
+MODEL_FILENAME = "gaia_busi_vit_small (1).pt"
 
-@st.cache_resource
-def download_model():
+IMAGE_SIZE = 224
 
-    model_path = hf_hub_download(
-        repo_id=REPO_ID,
-        filename=MODEL_FILENAME
-    )
+CLASS_NAMES = [
+    "Normal",
+    "Benign",
+    "Malignant"
+]
 
-    return model_path
+NUM_CLASSES = 3
 
 
 # ============================================================
-# MODEL
+# EXACT MODEL ARCHITECTURE USED DURING TRAINING
 # ============================================================
 
-class MammoSenseViT(nn.Module):
+class BUSIViT(nn.Module):
 
-    def __init__(
-        self,
-        architecture,
-        num_classes
-    ):
+    def __init__(self, num_classes=3):
 
         super().__init__()
 
+        # EXACT BACKBONE USED DURING TRAINING
         self.backbone = timm.create_model(
-            architecture,
+            "vit_small_patch16_224",
             pretrained=False,
-            num_classes=num_classes
+            num_classes=0
+        )
+
+        # EXACT CLASSIFICATION HEAD USED DURING TRAINING
+        self.head = nn.Sequential(
+
+            nn.Linear(
+                self.backbone.embed_dim,
+                1024
+            ),
+
+            nn.GELU(),
+
+            nn.Dropout(0.30),
+
+            nn.Linear(
+                1024,
+                512
+            ),
+
+            nn.GELU(),
+
+            nn.Dropout(0.20),
+
+            nn.Linear(
+                512,
+                num_classes
+            )
         )
 
     def forward(self, x):
 
-        return self.backbone(x)
+        features = self.backbone(x)
 
+        return self.head(features)
+
+
+# ============================================================
+# DOWNLOAD MODEL
+# ============================================================
+
+@st.cache_resource
+def download_model():
+
+    return hf_hub_download(
+        repo_id=REPO_ID,
+        filename=MODEL_FILENAME
+    )
+
+
+# ============================================================
+# LOAD MODEL
+# ============================================================
 
 @st.cache_resource
 def load_model():
@@ -161,13 +185,13 @@ def load_model():
         weights_only=False
     )
 
-    model = MammoSenseViT(
-        architecture=checkpoint["architecture"],
+    model = BUSIViT(
         num_classes=checkpoint["num_classes"]
     )
 
     model.load_state_dict(
-        checkpoint["model_state_dict"]
+        checkpoint["model_state_dict"],
+        strict=True
     )
 
     model.eval()
@@ -175,32 +199,19 @@ def load_model():
     return model, checkpoint
 
 
-model, checkpoint = load_model()
-
-
 # ============================================================
-# CHECKPOINT INFORMATION
+# IMAGE PREPROCESSING
+# EXACTLY MATCHES eval_transform USED DURING TESTING
 # ============================================================
 
-class_names = checkpoint["class_names"]
-image_size = checkpoint["image_size"]
-architecture = checkpoint["architecture"]
-num_classes = checkpoint["num_classes"]
-
-
-# ============================================================
-# PREPROCESSING
-# ============================================================
-
-transform = transforms.Compose([
-
-    transforms.Resize(
-        (image_size, image_size)
+transform = T.Compose([
+    T.Resize(
+        (IMAGE_SIZE, IMAGE_SIZE)
     ),
 
-    transforms.ToTensor(),
+    T.ToTensor(),
 
-    transforms.Normalize(
+    T.Normalize(
         mean=[
             0.485,
             0.456,
@@ -217,19 +228,52 @@ transform = transforms.Compose([
 
 
 # ============================================================
+# PREDICTION
+# ============================================================
+
+def predict(image, model):
+
+    image = image.convert("RGB")
+
+    tensor = transform(image)
+
+    tensor = tensor.unsqueeze(0)
+
+    with torch.no_grad():
+
+        logits = model(tensor)
+
+        probabilities = torch.softmax(
+            logits,
+            dim=1
+        )[0]
+
+    predicted_index = torch.argmax(
+        probabilities
+    ).item()
+
+    predicted_class = CLASS_NAMES[
+        predicted_index
+    ]
+
+    return (
+        predicted_class,
+        probabilities.cpu().numpy()
+    )
+
+
+# ============================================================
 # HEADER
 # ============================================================
 
 st.markdown("""
-<div class="mammo-header">
+<div class="hero">
 
-<div class="mammo-title">
-🩺 MammoSense
-</div>
+<h1>🩺 MammoSense</h1>
 
-<div class="mammo-subtitle">
+<p>
 AI-assisted breast ultrasound image classification
-</div>
+</p>
 
 </div>
 """, unsafe_allow_html=True)
@@ -241,461 +285,330 @@ AI-assisted breast ultrasound image classification
 
 with st.sidebar:
 
-    st.markdown("## 🩺 MammoSense")
-
-    st.caption(
-        "Breast Ultrasound AI Research Platform"
-    )
-
-    st.divider()
-
-    page = st.radio(
-        "Navigation",
-        [
-            "🔬 Image Analysis",
-            "🧠 Model Information",
-            "ℹ️ About MammoSense"
-        ]
-    )
-
-    st.divider()
-
-    st.markdown("**Model Status**")
-
-    st.success("Model loaded")
-
-    st.caption(
-        "ViT-Small • BUSI"
-    )
-
-
-# ============================================================
-# IMAGE ANALYSIS
-# ============================================================
-
-if page == "🔬 Image Analysis":
+    st.markdown("## MammoSense")
 
     st.markdown(
-        "## Breast Ultrasound Analysis"
+        "### AI Breast Ultrasound Analysis"
+    )
+
+    st.divider()
+
+    st.markdown("### Model Information")
+
+    st.write(
+        "**Architecture:** ViT-Small Patch16-224"
     )
 
     st.write(
-        "Upload a breast ultrasound image and "
-        "MammoSense will classify it into one of "
-        "three categories."
+        "**Input size:** 224 × 224"
     )
 
-    uploaded_file = st.file_uploader(
-        "Upload ultrasound image",
-        type=[
-            "jpg",
-            "jpeg",
-            "png"
-        ]
+    st.write(
+        "**Classes:** 3"
     )
 
+    st.write(
+        "**Training dataset:** BUSI"
+    )
 
-    if uploaded_file is None:
+    st.write(
+        "**Framework:** PyTorch + timm"
+    )
 
-        st.info(
-            "Upload an ultrasound image to begin."
-        )
+    st.divider()
 
-        c1, c2, c3 = st.columns(3)
+    st.markdown("### Classes")
 
-        with c1:
+    st.write("🟢 Normal")
+    st.write("🟡 Benign")
+    st.write("🔴 Malignant")
 
-            st.metric(
-                "Architecture",
-                "ViT-Small"
-            )
+    st.divider()
 
-        with c2:
-
-            st.metric(
-                "Classes",
-                "3"
-            )
-
-        with c3:
-
-            st.metric(
-                "Input",
-                f"{image_size} × {image_size}"
-            )
-
-
-    else:
-
-        image = Image.open(
-            uploaded_file
-        ).convert("RGB")
-
-
-        col1, col2 = st.columns(
-            [1.1, 1]
-        )
-
-
-        with col1:
-
-            st.markdown(
-                "### Ultrasound Image"
-            )
-
-            st.image(
-                image,
-                use_container_width=True
-            )
-
-
-        with col2:
-
-            st.markdown(
-                "### Analysis"
-            )
-
-            analyze = st.button(
-                "🔍 Analyze Image",
-                type="primary",
-                use_container_width=True
-            )
-
-
-            if analyze:
-
-                with st.spinner(
-                    "MammoSense is analyzing the image..."
-                ):
-
-                    x = transform(
-                        image
-                    ).unsqueeze(0)
-
-
-                    with torch.no_grad():
-
-                        output = model(x)
-
-                        probabilities = F.softmax(
-                            output,
-                            dim=1
-                        )[0]
-
-
-                    prediction_index = torch.argmax(
-                        probabilities
-                    ).item()
-
-
-                    prediction = class_names[
-                        prediction_index
-                    ]
-
-
-                    confidence = probabilities[
-                        prediction_index
-                    ].item()
-
-
-                st.session_state[
-                    "prediction"
-                ] = prediction
-
-                st.session_state[
-                    "confidence"
-                ] = confidence
-
-                st.session_state[
-                    "probabilities"
-                ] = probabilities.tolist()
-
-                st.session_state[
-                    "analyzed"
-                ] = True
-
-
-        if st.session_state.get(
-            "analyzed",
-            False
-        ):
-
-            prediction = st.session_state[
-                "prediction"
-            ]
-
-            confidence = st.session_state[
-                "confidence"
-            ]
-
-            probabilities = st.session_state[
-                "probabilities"
-            ]
-
-
-            st.divider()
-
-            st.markdown(
-                "## MammoSense Result"
-            )
-
-
-            r1, r2, r3 = st.columns(3)
-
-
-            with r1:
-
-                st.markdown(
-                    f"""
-                    <div class="result-card">
-
-                    <div class="result-title">
-                    Prediction
-                    </div>
-
-                    <div class="result-value">
-                    {prediction}
-                    </div>
-
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-
-            with r2:
-
-                st.markdown(
-                    f"""
-                    <div class="result-card">
-
-                    <div class="result-title">
-                    Confidence
-                    </div>
-
-                    <div class="result-value">
-                    {confidence*100:.1f}%
-                    </div>
-
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-
-            with r3:
-
-                st.markdown(
-                    f"""
-                    <div class="result-card">
-
-                    <div class="result-title">
-                    Classes
-                    </div>
-
-                    <div class="result-value">
-                    {num_classes}
-                    </div>
-
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-
-            # =================================================
-            # PROBABILITIES
-            # =================================================
-
-            st.markdown(
-                "### Classification Probabilities"
-            )
-
-
-            for i, name in enumerate(
-                class_names
-            ):
-
-                probability = probabilities[i]
-
-                st.write(
-                    f"**{name}** — "
-                    f"{probability*100:.2f}%"
-                )
-
-                st.progress(
-                    probability
-                )
-
-
-            # =================================================
-            # DISCLAIMER
-            # =================================================
-
-            st.markdown(
-                """
-                <div class="disclaimer">
-
-                <strong>⚠️ Important Research Disclaimer</strong>
-
-                <br><br>
-
-                MammoSense is an artificial intelligence
-                research prototype for breast ultrasound
-                image classification.
-
-                Its predictions must not be interpreted as
-                a medical diagnosis or used as a substitute
-                for assessment by a qualified healthcare
-                professional.
-
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+    st.caption(
+        "MammoSense is an AI research and "
+        "educational prototype."
+    )
 
 
 # ============================================================
-# MODEL INFORMATION
+# INTRODUCTION
 # ============================================================
 
-elif page == "🧠 Model Information":
+st.markdown(
+    "## Breast Ultrasound Analysis"
+)
 
-    st.markdown(
-        "## Model Information"
-    )
-
-    a, b, c = st.columns(3)
-
-    with a:
-
-        st.metric(
-            "Architecture",
-            architecture
-        )
-
-    with b:
-
-        st.metric(
-            "Input Size",
-            f"{image_size} × {image_size}"
-        )
-
-    with c:
-
-        st.metric(
-            "Classes",
-            num_classes
-        )
+st.write(
+    "Upload a breast ultrasound image to obtain "
+    "an AI-generated classification and probability "
+    "distribution."
+)
 
 
-    st.markdown(
-        "### Classification Categories"
-    )
+# ============================================================
+# MODEL LOADING
+# ============================================================
 
-    for i, name in enumerate(
-        class_names
+try:
+
+    with st.spinner(
+        "Loading MammoSense AI model..."
     ):
 
-        st.write(
-            f"**{i} — {name}**"
+        model, checkpoint = load_model()
+
+    st.success(
+        "MammoSense model loaded successfully."
+    )
+
+except Exception as e:
+
+    st.error(
+        "Unable to load the MammoSense model."
+    )
+
+    st.exception(e)
+
+    st.stop()
+
+
+# ============================================================
+# IMAGE UPLOAD
+# ============================================================
+
+uploaded_file = st.file_uploader(
+    "Upload breast ultrasound image",
+    type=[
+        "jpg",
+        "jpeg",
+        "png",
+        "bmp",
+        "tif",
+        "tiff"
+    ]
+)
+
+
+# ============================================================
+# ANALYSIS
+# ============================================================
+
+if uploaded_file is not None:
+
+    image = Image.open(
+        uploaded_file
+    ).convert("RGB")
+
+    st.divider()
+
+    left, right = st.columns(
+        [1, 1]
+    )
+
+    # --------------------------------------------------------
+    # IMAGE
+    # --------------------------------------------------------
+
+    with left:
+
+        st.markdown(
+            "### Uploaded Image"
+        )
+
+        st.image(
+            image,
+            use_container_width=True
+        )
+
+    # --------------------------------------------------------
+    # PREDICTION
+    # --------------------------------------------------------
+
+    with right:
+
+        st.markdown(
+            "### AI Classification"
+        )
+
+        with st.spinner(
+            "Analyzing ultrasound image..."
+        ):
+
+            prediction, probabilities = predict(
+                image,
+                model
+            )
+
+        confidence = (
+            float(probabilities.max())
+            * 100
+        )
+
+        st.markdown(
+            '<div class="result-card">',
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            f"## {prediction}"
+        )
+
+        st.metric(
+            "Model confidence",
+            f"{confidence:.2f}%"
+        )
+
+        st.markdown(
+            "</div>",
+            unsafe_allow_html=True
         )
 
 
-    st.markdown(
-        "### Model Pipeline"
-    )
+    # ========================================================
+    # PROBABILITY DISTRIBUTION
+    # ========================================================
+
+    st.divider()
 
     st.markdown(
-        """
-        **1. Image Upload**
-
-        Breast ultrasound image is uploaded.
-
-        **2. Preprocessing**
-
-        Image is converted to RGB, resized to
-        the model input size and normalized.
-
-        **3. Vision Transformer**
-
-        The image is processed by the trained
-        ViT-Small model.
-
-        **4. Classification**
-
-        Probability scores are generated for:
-
-        - Normal
-        - Benign
-        - Malignant
-
-        **5. Prediction**
-
-        The class with the highest probability
-        becomes the model prediction.
-        """
+        "## Prediction Probabilities"
     )
+
+    cols = st.columns(3)
+
+    for i, class_name in enumerate(
+        CLASS_NAMES
+    ):
+
+        probability = (
+            float(probabilities[i])
+            * 100
+        )
+
+        with cols[i]:
+
+            st.markdown(
+                f"### {class_name}"
+            )
+
+            st.progress(
+                min(
+                    probability / 100,
+                    1.0
+                )
+            )
+
+            st.write(
+                f"**{probability:.2f}%**"
+            )
+
+
+    # ========================================================
+    # MODEL INTERPRETATION
+    # ========================================================
+
+    st.divider()
+
+    st.markdown(
+        "## Analysis Summary"
+    )
+
+    summary_col1, summary_col2 = st.columns(2)
+
+    with summary_col1:
+
+        st.markdown(
+            '<div class="info-card">',
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            "**Predicted classification**"
+        )
+
+        st.markdown(
+            f"### {prediction}"
+        )
+
+        st.write(
+            f"The model assigned the highest "
+            f"probability to **{prediction}**."
+        )
+
+        st.markdown(
+            "</div>",
+            unsafe_allow_html=True
+        )
+
+
+    with summary_col2:
+
+        st.markdown(
+            '<div class="info-card">',
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            "**Highest probability**"
+        )
+
+        st.markdown(
+            f"### {confidence:.2f}%"
+        )
+
+        st.write(
+            "This represents the model's "
+            "predicted probability for its "
+            "highest-scoring class."
+        )
+
+        st.markdown(
+            "</div>",
+            unsafe_allow_html=True
+        )
 
 
 # ============================================================
-# ABOUT
+# DISCLAIMER
 # ============================================================
 
-elif page == "ℹ️ About MammoSense":
+st.divider()
 
-    st.markdown(
-        "## About MammoSense"
-    )
+st.markdown("""
+<div class="disclaimer">
 
-    st.markdown(
-        """
-        ### MammoSense
+### ⚠️ Important Medical Disclaimer
 
-        MammoSense is an artificial intelligence research
-        platform focused on automated classification of
-        breast ultrasound images.
+MammoSense is an experimental AI research prototype
+and is **not a medical device or diagnostic system**.
 
-        The current prototype uses a **Vision Transformer
-        (ViT-Small)** model for three-class classification.
+Its predictions should not be used to diagnose,
+exclude, or confirm breast cancer.
 
-        ### Research Objectives
+AI predictions may be incorrect, particularly for
+images that differ from the training dataset.
 
-        - Breast ultrasound classification
-        - Computer vision research
-        - AI-assisted image analysis
-        - Model interpretability
-        - External dataset evaluation
+Always seek evaluation by a qualified healthcare
+professional and appropriate clinical imaging
+assessment.
 
-        ### Current Classes
-
-        **Normal • Benign • Malignant**
-
-        ### Important
-
-        MammoSense is currently a research prototype and
-        has not been established as a clinical diagnostic
-        tool.
-        """
-    )
+</div>
+""", unsafe_allow_html=True)
 
 
 # ============================================================
 # FOOTER
 # ============================================================
 
-st.markdown(
-    """
-    <div class="footer">
+st.divider()
 
-    MammoSense • Breast Ultrasound AI Research Platform
-
-    <br><br>
-
-    Research prototype — not a medical diagnostic device.
-
-    </div>
-    """,
-    unsafe_allow_html=True
+st.caption(
+    "MammoSense • AI-assisted breast ultrasound "
+    "classification research prototype"
 )
 
+st.caption(
+    "Model: ViT-Small Patch16-224 • "
+    "Dataset: BUSI • 3-class classification"
+)
